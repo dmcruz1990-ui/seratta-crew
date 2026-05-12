@@ -1,0 +1,70 @@
+{
+  "name": "Seratta Crew",
+  "short_name": "Seratta",
+  "description": "Tu panel de rendimiento, propinas y wallet — OMM · Grupo Seratta",
+  "start_url": "/crew",
+  "display": "standalone",
+  "background_color": "#08080f",
+  "theme_color": "#FFB547",
+  "orientation": "portrait-primary",
+  "lang": "es-CO",
+  "icons": [
+    {
+      "src": "/icons/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/crew-wallet.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "label": "Wallet y propinas en tiempo real"
+    }
+  ],
+  "categories": ["productivity", "business"],
+  "shortcuts": [
+    {
+      "name": "Mi Wallet",
+      "url": "/crew#wallet",
+      "description": "Ver mis propinas disponibles"
+    },
+    {
+      "name": "Mi Performance",
+      "url": "/crew#performance",
+      "description": "Ver mi rendimiento del día"
+    }
+  ]
+}
