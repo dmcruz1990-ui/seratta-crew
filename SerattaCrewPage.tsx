@@ -23,6 +23,32 @@ const C = {
 };
 const fmt = (n:number) => `$${Math.round(n).toLocaleString('es-CO')}`;
 
+// Agrupa las distribuciones del TipNetwork de Nexum por factura → propina neta del mesero por mesa.
+// Cada propina se reparte en varios pools; aquí sumamos lo que le tocó al empleado en cada cuenta.
+function agruparPropinas(rows:any[]) {
+  const map = new Map<string, any>();
+  for (const r of rows) {
+    const k = r.factura_id;
+    const prev = map.get(k);
+    if (prev) {
+      prev.mi_propina += Number(r.employee_amount || 0);
+      if (!prev.pools.includes(r.pool_name)) prev.pools.push(r.pool_name);
+    } else {
+      map.set(k, {
+        factura_id:    k,
+        mesa_num:      r.mesa_num,
+        factura_total: Number(r.factura_total || 0),
+        pct_propina:   r.pct_propina,
+        tip_amount:    Number(r.tip_amount || 0),
+        created_at:    r.created_at,
+        mi_propina:    Number(r.employee_amount || 0),
+        pools:         [r.pool_name],
+      });
+    }
+  }
+  return Array.from(map.values());
+}
+
 type Tab = 'home' | 'wallet' | 'performance' | 'propinas';
 
 export default function SerattaCrewPage() {
@@ -36,6 +62,8 @@ export default function SerattaCrewPage() {
   const [ranking, setRanking]   = useState<any[]>([]);
   const [propinas, setPropinas] = useState<any[]>([]);
   const [resumen, setResumen]   = useState<any>(null);
+  const [solicitud, setSolicitud]     = useState<any>(null);
+  const [solicitando, setSolicitando] = useState(false);
   const [loading, setLoading]   = useState(true);
   const [toast, setToast]       = useState('');
 
@@ -44,23 +72,26 @@ export default function SerattaCrewPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [wl, mv, rk, pr, rs] = await Promise.all([
+    const [wl, mv, rk, pr, rs, sc] = await Promise.all([
       // Wallet de este mesero
       supabase.from('vista_wallet_empleado').select('*').eq('empleado_nombre', nombre).maybeSingle(),
       // Últimos movimientos del wallet
       supabase.from('wallet_ledger').select('*').eq('empleado_nombre', nombre).order('created_at', {ascending:false}).limit(20),
       // Ranking del día
       supabase.from('vista_ranking_period').select('*').eq('fecha', hoy).order('total_ganado', {ascending:false}).limit(20),
-      // Propinas del día
-      supabase.from('propinas').select('*').eq('mesero_nombre', nombre).eq('fecha', hoy).order('created_at', {ascending:false}),
+      // Propinas del día — TipNetwork de Nexum (lo que realmente entra al wallet del mesero)
+      supabase.from('vista_tip_distribuciones').select('*').eq('empleado_nombre', nombre).eq('fecha', hoy).eq('wallet_enabled', true).order('created_at', {ascending:false}),
       // Resumen del día (ventas)
       supabase.from('vista_ventas_mesero').select('*').eq('fecha', hoy).eq('nombre', nombre).maybeSingle(),
+      // Solicitud de retiro en curso (pendiente o aprobada)
+      supabase.from('propinas_solicitudes_cobro').select('*').eq('mesero_nombre', nombre).in('estado', ['pendiente','aprobada']).order('solicitada_en', {ascending:false}).limit(1).maybeSingle(),
     ]);
     if (wl.data)   setWallet(wl.data);
     if (mv.data)   setMovs(mv.data);
     if (rk.data)   setRanking(rk.data);
-    if (pr.data)   setPropinas(pr.data);
+    if (pr.data)   setPropinas(agruparPropinas(pr.data));
     if (rs.data)   setResumen(rs.data);
+    setSolicitud(sc?.data || null);
     setLoading(false);
   }, [nombre, hoy]);
 
@@ -92,9 +123,28 @@ export default function SerattaCrewPage() {
     }
   }, []);
 
+  // Solicitar retiro anticipado de propinas → gerencia lo aprueba desde el módulo Propinas de Nexum
+  const solicitarRetiro = async () => {
+    if (solicitando) return;
+    if (solicitud) { show('Ya tienes una solicitud en proceso'); return; }
+    const monto = wallet?.disponible_retiro || 0;
+    if (!wallet?.puede_retirar || monto <= 0) { show('Aún no puedes retirar'); return; }
+    setSolicitando(true);
+    const { error } = await supabase.from('propinas_solicitudes_cobro').insert({
+      restaurante_id: wallet.restaurante_id,
+      mesero_id:      profile?.id || null,
+      mesero_nombre:  nombre,
+      monto,
+    });
+    setSolicitando(false);
+    if (error) { show('No se pudo enviar la solicitud'); return; }
+    show('✅ Solicitud de retiro enviada a gerencia');
+    fetchData();
+  };
+
   // Posición en ranking del día
   const miRankingPos = ranking.findIndex(r => r.empleado_nombre === nombre);
-  const totalPropinasHoy = propinas.reduce((s,p)=>s+(p.monto_propina||0), 0);
+  const totalPropinasHoy = propinas.reduce((s,p)=>s+(p.mi_propina||0), 0);
 
   return (
     <div style={{
@@ -252,9 +302,14 @@ export default function SerattaCrewPage() {
           <div style={{background:`linear-gradient(135deg,${C.gold}20,${C.gold}05)`,border:`1px solid ${C.gold}30`,borderRadius:20,padding:'24px 20px',textAlign:'center',marginBottom:16}}>
             <div style={{fontSize:11,color:C.gold,fontWeight:700,textTransform:'uppercase',marginBottom:6}}>Saldo disponible</div>
             <div style={{fontFamily:"'Syne',sans-serif",fontSize:44,fontWeight:900,color:C.gold}}>{fmt(wallet?.disponible_retiro||0)}</div>
-            {wallet?.puede_retirar ? (
-              <button style={{marginTop:14,padding:'12px 32px',borderRadius:50,border:'none',background:`linear-gradient(135deg,${C.green},#009944)`,color:'#000',fontSize:14,fontWeight:700,cursor:'pointer'}}>
-                Solicitar retiro
+            {solicitud ? (
+              <div style={{marginTop:14,padding:'12px 16px',borderRadius:12,background:`${C.gold}15`,border:`1px solid ${C.gold}30`,fontSize:12,color:C.gold,fontWeight:700}}>
+                🔄 Solicitud de {fmt(solicitud.monto)} {solicitud.estado==='aprobada' ? 'aprobada — en pago' : 'en revisión por gerencia'}
+              </div>
+            ) : wallet?.puede_retirar ? (
+              <button onClick={solicitarRetiro} disabled={solicitando}
+                style={{marginTop:14,padding:'12px 32px',borderRadius:50,border:'none',background:solicitando?'#1e1e2e':`linear-gradient(135deg,${C.green},#009944)`,color:'#000',fontSize:14,fontWeight:700,cursor:solicitando?'default':'pointer'}}>
+                {solicitando ? 'Enviando...' : 'Solicitar retiro'}
               </button>
             ) : (
               <div style={{marginTop:10,fontSize:11,color:C.t3}}>
@@ -373,15 +428,17 @@ export default function SerattaCrewPage() {
             </div>
           ) : (
             propinas.map(p=>(
-              <div key={p.id} style={{background:C.bg2,border:`1px solid rgba(255,255,255,0.07)`,borderRadius:12,padding:'12px 14px',marginBottom:8,display:'flex',alignItems:'center',gap:12}}>
+              <div key={p.factura_id} style={{background:C.bg2,border:`1px solid rgba(255,255,255,0.07)`,borderRadius:12,padding:'12px 14px',marginBottom:8,display:'flex',alignItems:'center',gap:12}}>
                 <div style={{width:36,height:36,borderRadius:10,background:`${C.gold}15`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>💰</div>
                 <div style={{flex:1}}>
                   <div style={{fontSize:11,fontWeight:600}}>Mesa {p.mesa_num||'—'}</div>
-                  <div style={{fontSize:9,color:C.t3}}>{p.hora||'—'} · {p.pct_propina}% · {p.metodo_pago}</div>
+                  <div style={{fontSize:9,color:C.t3}}>
+                    {p.created_at ? new Date(p.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) : '—'} · {p.pct_propina}% · {p.pools.join(' · ')}
+                  </div>
                 </div>
                 <div>
-                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:C.gold}}>{fmt(p.monto_propina||0)}</div>
-                  <div style={{fontSize:9,color:C.t3,textAlign:'right'}}>de {fmt(p.monto_cuenta||0)}</div>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:C.gold}}>{fmt(p.mi_propina||0)}</div>
+                  <div style={{fontSize:9,color:C.t3,textAlign:'right'}}>de {fmt(p.factura_total||0)}</div>
                 </div>
               </div>
             ))
