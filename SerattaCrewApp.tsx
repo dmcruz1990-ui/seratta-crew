@@ -3,9 +3,12 @@ import { createClient } from '@supabase/supabase-js'
 import SerattaCrewPage from './SerattaCrewPage'
 
 // ══ Supabase — mismo proyecto que Nexum V4 ══
+// La anon key es pública (segura para el cliente); se puede sobreescribir con VITE_SUPABASE_ANON_KEY.
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YXhqdHR2a2FlZXdzamJwZXJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkxMTc0MjgsImV4cCI6MjA4NDY5MzQyOH0.fMINxNqrLT6f8lNPrpRZYPpm6IjTlKg6wAH7aAlfz_o'
+
 const supabase = createClient(
   'https://kxaxjttvkaeewsjbpert.supabase.co',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+  import.meta.env.VITE_SUPABASE_ANON_KEY || SUPABASE_ANON_KEY
 )
 
 // Context de auth
